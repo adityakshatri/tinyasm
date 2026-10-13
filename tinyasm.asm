@@ -2,7 +2,10 @@
 format ELF64 executable 3
 entry _start
 
-QBX_MEM_SIZE = 1024 * 16
+
+section '.mem' data readable writeable
+        QBX_MEM_SIZE = 1024 * 16  ; 16 K
+        qbx_mem db QBX_MEM_SIZE dup ?
 
 segment readable writeable
 
@@ -30,6 +33,7 @@ segment readable writeable
     qbx_program_size rq 1
 
 segment readable executable
+
 
 _start:
     ; argc must be 2: executable + filename.
