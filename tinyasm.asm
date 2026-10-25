@@ -14,24 +14,24 @@ section '.data' data readable writeable
  
 
 section '.mem' data readable writeable
-    QBX_MEM_SIZE = 1024 * 16  ; 16 K
-    qbx_mem db QBX_MEM_SIZE dup ?
+    MEM_SIZE = 1024 * 16  ; 16 K
+    tiny_mem db MEM_SIZE dup ?
 
-segment readable writeable
+section 'text' segment readable writeable
 
-    qbx_mem rb QBX_MEM_SIZE + 1
+    tiny_mem rb MEM_SIZE + 1
     filename rb 4096
 
-    msg_usage db "Usage: qbx <bytecode-file>", 10
+    msg_usage db "Usage: tiny <bytecode-file>", 10
     msg_usage_len = $ - msg_usage
 
-    msg_open_error db "qbx: cannot open input file", 10
+    msg_open_error db "tiny: cannot open input file", 10
     msg_open_error_len = $ - msg_open_error
 
-    msg_read_error db "qbx: failed to read input file", 10
+    msg_read_error db "tiny: failed to read input file", 10
     msg_read_error_len = $ - msg_read_error
 
-    msg_too_large db "qbx: program exceeds 16 KiB", 10
+    msg_too_large db "tiny: program exceeds 16 KiB", 10
     msg_too_large_len = $ - msg_too_large
 
     msg_read_len db "Bytes read: "
@@ -40,10 +40,9 @@ segment readable writeable
     ; Buffer for the decimal byte count and newline.
     number_buffer rb 32
 
-    qbx_program_size rq 1
+    program_size rq 1
 
-segment readable executable
-
+section '.text' code readable executable
 
 _start:
     ; argc must be 2: executable + filename.
@@ -66,23 +65,23 @@ _start:
 
     mov r12, rax
 
-    ; Read up to QBX_MEM_SIZE + 1 bytes.
+    ; Read up to MEM_SIZE + 1 bytes.
     ; The extra byte detects oversized programs.
     xor eax, eax
     mov rdi, r12
-    lea rsi, [qbx_mem]
-    mov edx, QBX_MEM_SIZE + 1
+    lea rsi, [tiny_mem]
+    mov edx, MEM_SIZE + 1
     syscall
 
     test rax, rax
     js read_error
 
     ; Reject programs larger than 16 KiB.
-    cmp rax, QBX_MEM_SIZE
+    cmp rax, MEM_SIZE
     ja too_large
 
     ; Preserve the actual number of bytes read.
-    mov [qbx_program_size], rax
+    mov [program_size], rax
 
     ; Print "Bytes read: "
     mov eax, 1
@@ -92,7 +91,7 @@ _start:
     syscall
 
     ; Convert byte count to decimal.
-    mov rax, [qbx_program_size]
+    mov rax, [program_size]
     lea rsi, [number_buffer + 31]
     mov byte [rsi], 10
     mov ecx, 1
@@ -123,29 +122,29 @@ _start:
 
 
     begin_execution:
-        ; prep qbx for execution.
-        xor q0, q0
-        xor q1, q1
-        xor q2, q2
-        xor q3, q3
-        xor qip, qip
+        ; prep for execution.
+        xor t0, t0
+        xor t1, t1
+        xor t2, t2
+        xor t3, t3
+        xor tip, tip
         xor rdi, rdi
-        mov qsp, QBX_MEM_SIZE - 1
-        if defined(QBX_BUILD_MODE_DEBUG)
+        mov tsp, MEM_SIZE - 1
+        if defined(BUILD_MODE_DEBUG)
             int3         ; breakpoint for the debugger
         end if
 
     advance:
-        move di,word[qbx_mem + qip]
-        add qip, 2
-     movzx r10, word [qbx_jmp_table + rdi * 2]
+        move di,word[tiny_mem + tip]
+        add tip, 2
+     movzx r10, word [tiny_jmp_table + rdi * 2]
         add r10, insn base
         move rax, flags
         sahf
         jmp r10
 
     ;Temporary endpoint: loading succeeded.
-    ; QBX CPU initialization and dispatch go here.
+    ;CPU initialization and dispatch go here.
     insn base:
 
     insn noop:
@@ -157,7 +156,7 @@ _start:
         cmp[arg_ptr], 3
         jl quit
         mov r10,[arg_ptr]
-        mov rdc, qword [r10+16]
+        mov rdc, tword [r10+16]
         cmp byte [rdx], 0
         jne quit
 
@@ -174,23 +173,23 @@ _start:
         ;Write data to file (sys_write = 1)
         mov rax, 1          ; syscall: write
         mov rdi, [file_desc]; file descriptor
-        mov rsi, qbx_mem        ; buffer address
-        mov rdx, QBX_MEM_SIZE    ; number of bytes
+        mov rsi, tiny_mem        ; buffer address
+        mov rdx, MEM_SIZE    ; number of bytes
         syscall
 
         ;dump registers to file
-        mov word [qbx_mem + 0],  q0
-        mov word [qbx_mem + 2],  q1
-        mov word [qbx_mem + 4],  q2
-        mov word [qbx_mem + 6],  q3
-        mov word [qbx_mem + 8],  qipw
-        mov word [qbx_mem + 10], qspw
-        mov word [qbx_mem + 12], qflagsw
+        mov word [tiny_mem + 0],  t0
+        mov word [tiny_mem + 2],  t1
+        mov word [tiny_mem + 4],  t2
+        mov word [tiny_mem + 6],  t3
+        mov word [tiny_mem + 8],  tip
+        mov word [tiny_mem + 10], tsp
+        mov word [tiny_mem + 12], tflags
 
         mov rax, 1          ; syscall: write
         mov rdi, [file_desc]; file descriptor
-        mov rsi, qbx_mem        ; buffer address
-        mov rdx, QBX_MEM_SIZE    ; number of bytes
+        mov rsi, tiny_mem        ; buffer address
+        mov rdx, MEM_SIZE    ; number of bytes
         syscall
 ;       Close file (sys_close = 3)
         mov rax, 3          ; syscall: close
@@ -207,14 +206,14 @@ _start:
     ;moves immediate value to register    
     rept TINY_NUM_REGISTERS reg:0 {
         insn moveiwq#reg
-            mov r##reg, [word [qbx_mem + qip]]
-            add qip, 2
+            mov r##reg, [word [tiny_mem + tip]]
+            add tip, 2
         end insn
 
         ;byte sized oprands
         insn moveibq#reg
-            movzx r##reg, byte [qbx_mem + qip]
-            add qip, 1
+            movzx r##reg, byte [tiny_mem + tip]
+            add tip, 1
         end insn
     }
 
@@ -235,68 +234,68 @@ _start:
     ;store value to direct adress
     rept TINY_NUM_REGISTERS reg:0 {
         insn storewq#reg
-            mov rax, [word [qbx_mem + qip]]
-            add qip, 2
-            mov [qbx_mem + rax], r##reg
+            mov rax, [word [tiny_mem + tip]]
+            add tip, 2
+            mov [tiny_mem + rax], r##reg
         end insn
 
         insn storebq#reg
-            movzx rax, byte [qbx_mem + qip]
-            add qip, 1
-            mov [qbx_mem + rax], r##regb
+            movzx rax, byte [tiny_mem + tip]
+            add tip, 1
+            mov [tiny_mem + rax], r##regb
         end insn
     }
 
-    ;store value to adress in q0
+    ;store value to address in t0
     rept 3 reg {
         ;word sized
         insn storewq#reg
-            move word [qbx_mem + qaddr], q#reg
+            move word [tiny_mem + t0], t#reg
         end insn
 
         insn storebq#reg
-            move byte [qbx_mem + qaddr], q#regb
+            move byte [tiny_mem + t0], t#regb
         end insn
     }
 
     rept TINY_NUM_REGISTERS reg:0 {
         insn pushwq#reg
-            sub qsp, 2
-            mov word [qbx_mem + qsp + 1], q#reg
+            sub tsp, 2
+            mov word [tiny_mem + tsp + 1], t#reg
         end insn
 
         insn pushbq#reg
-            sub qsp, 1
-            mov byte [qbx_mem + qsp + 1], q#reg#b
+            sub tsp, 1
+            mov byte [tiny_mem + tsp + 1], t#reg#b
         end insn
     }
 
     ; pop word-sized value from the stack.
     rept TINY_NUM_REGISTERS reg:0 {
         insn popwq#reg
-            mov q#reg, word [qbx_mem + qsp + 1]
-            add qsp, 2
+            mov t#reg, word [tiny_mem + tsp + 1]
+            add tsp, 2
         endinsn
 
         insn popbq#reg
-            mov q#reg#b, byte [qbx_mem + qsp + 1]
-            add qsp, 1
+            mov t#reg#b, byte [tiny_mem + tsp + 1]
+            add tsp, 1
         endinsn
     }
 
 
         ; addition instructions
-        rept QBX_NUM_REGISTERS sreg:0 {
-             rept QBX_NUM_REGISTERS dreg:0 \{
+        rept TINY_NUM_REGISTERS sreg:0 {
+             rept TINY_NUM_REGISTERS dreg:0 \{
                   ; byte-sized operands
-                  insn addbq\#dreg\#q#sreg
-                       add q\#dreg\#b, q#sreg#b
+                  insn addbq\#dreg\#t#sreg
+                       add t\#dreg\#b, t#sreg#b
                        update_qbx_flags = 1
                   endinsn
 
                   ; word-sized operands
-                  insn addwq\#dreg\#q#sreg
-                       add q\#dreg\#w, q#sreg#w
+                  insn addwq\#dreg\#t#sreg
+                       add t\#dreg\#w, t#sreg#w
                        update_qbx_flags = 1
                   endinsn
 
@@ -304,17 +303,17 @@ _start:
         }
 
         ; subtraction instructions
-        rept QBX_NUM_REGISTERS sreg:0 {
-             rept QBX_NUM_REGISTERS dreg:0 \{
+        rept TINY_NUM_REGISTERS sreg:0 {
+             rept TINY_NUM_REGISTERS dreg:0 \{
                   ; byte-sized operands
-                  insn subbq\#dreg\#q#sreg
-                       sub q\#dreg\#b, q#sreg#b
+                  insn subbq\#dreg\#t#sreg
+                       sub t\#dreg\#b, t#sreg#b
                        update_qbx_flags = 1
                   endinsn
 
                   ; word-sized operands
-                  insn subwq\#dreg\#q#sreg
-                       sub q\#dreg\#w, q#sreg#w
+                  insn subwq\#dreg\#t#sreg
+                       sub t\#dreg\#w, t#sreg#w
                        update_qbx_flags = 1
                   endinsn
 
@@ -322,43 +321,43 @@ _start:
         }
 
         ; unsigned multiplication
-        rept QBX_NUM_REGISTERS sreg:0 {
-             rept QBX_NUM_REGISTERS dreg:0 \{
+        rept TINY_NUM_REGISTERS sreg:0 {
+             rept TINY_NUM_REGISTERS dreg:0 \{
                   ; byte-sized operands
-                  insn mulbq\#dreg\#q#sreg
+                  insn mulbq\#dreg\#t#sreg
                        xor rax, rax
-                       mov al, q\#dreg\#b
-                       mul q#sreg#b
-                       mov q\#dreg\#b, al
+                       mov al, t\#dreg\#b
+                       mul t#sreg#b
+                       mov t\#dreg\#b, al
                        update_qbx_flags = 1
                   endinsn
 
                  ; word-sized operands
-                 insn mulwq\#dreg\#q#sreg
+                 insn mulwq\#dreg\#t#sreg
                       xor rax, rax
-                      mov ax, q\#dreg\#w
-                      mul q#sreg#w
-                      mov q\#dreg\#w, ax
+                      mov ax, t\#dreg\#w
+                      mul t#sreg#w
+                      mov t\#dreg\#w, ax
                       update_qbx_flags = 1
                   endinsn
              \}
         }
 
         ; signed multiplication
-        rept QBX_NUM_REGISTERS sreg:0 {
-             rept QBX_NUM_REGISTERS dreg:0 \{
+        rept TINY_NUM_REGISTERS sreg:0 {
+             rept TINY_NUM_REGISTERS dreg:0 \{
                   ; byte-sized operands
-                  insn smulbq\#dreg\#q#sreg
+                  insn smulbq\#dreg\#t#sreg
                        xor rax, rax
-                       mov al, q\#dreg\#b
-                       imul q#sreg#b
-                       mov q\#dreg\#b, al
+                       mov al, t\#dreg\#b
+                       imul t#sreg#b
+                       mov t\#dreg\#b, al
                        update_qbx_flags = 1
                   endinsn
 
                  ; word-sized operands
-                 insn smulwq\#dreg\#q#sreg
-                      imul q\#dreg\#w, q#sreg#w
+                 insn smulwq\#dreg\#t#sreg
+                      imul t\#dreg\#w, t#sreg#w
                       update_qbx_flags = 1
                   endinsn
              \}
@@ -370,11 +369,11 @@ _start:
              insn divbq#sreg
                   xor dx, dx
                   xor ax, ax
-                  mov ax, q0w
-                  movzx cx, q#sreg#b
+                  mov ax, t0w
+                  movzx cx, t#sreg#b
                   div cx
-                  mov q0, ax
-                  mov q1, dx
+                  mov t0, ax
+                  mov t1, dx
                   update_qbx_flags = 1
              endinsn
 
@@ -382,10 +381,10 @@ _start:
              insn divwq#sreg
                   xor rax, rax
                   xor rdx, rdx
-                  mov ax, q0w
-                  div q#sreg#w
-                  mov q0, ax
-                  mov q1, dx
+                  mov ax, t0w
+                  div t#sreg#w
+                  mov t0, ax
+                  mov t1, dx
                   update_qbx_flags = 1
              endinsn
         }
@@ -396,11 +395,11 @@ _start:
              insn sdivbq#sreg
                   xor dx, dx
                   xor ax, ax
-                  mov ax, q0w
-                  movzx cx, q#sreg#b
+                  mov ax, t0w
+                  movzx cx, t#sreg#b
                   idiv cx
-                  mov q0, ax
-                  mov q1, dx
+                  mov t0, ax
+                  mov t1, dx
                   update_qbx_flags = 1
              endinsn
 
@@ -408,27 +407,27 @@ _start:
              insn sdivwq#sreg
                   xor rax, rax
                   xor rdx, rdx
-                  mov ax, q0w
-                  idiv q#sreg#w
-                  mov q0, ax
-                  mov q1, dx
+                  mov ax, t0w
+                  idiv t#sreg#w
+                  mov t0, ax
+                  mov t1, dx
                   update_qbx_flags = 1
              endinsn
         }
 
 
         ; bitwise and instructions
-        rept QBX_NUM_REGISTERS sreg:0 {
-             rept QBX_NUM_REGISTERS dreg:0 \{
+        rept TINY_NUM_REGISTERS sreg:0 {
+             rept TINY_NUM_REGISTERS dreg:0 \{
                   ; byte-sized operands
-                  insn andbq\#dreg\#q#sreg
-                       and q\#dreg\#b, q#sreg#b
+                  insn andbq\#dreg\#t#sreg
+                       and t\#dreg\#b, t#sreg#b
                        update_qbx_flags = 1
                   endinsn
 
                   ; word-sized operands
-                  insn andwq\#dreg\#q#sreg
-                       and q\#dreg\#w, q#sreg#w
+                  insn andwq\#dreg\#t#sreg
+                       and t\#dreg\#w, t#sreg#w
                        update_qbx_flags = 1
                   endinsn
 
@@ -436,17 +435,17 @@ _start:
         }
 
         ; bitwise or instructions
-        rept QBX_NUM_REGISTERS sreg:0 {
-             rept QBX_NUM_REGISTERS dreg:0 \{
+        rept TINY_NUM_REGISTERS sreg:0 {
+             rept TINY_NUM_REGISTERS dreg:0 \{
                   ; byte-sized operands
-                  insn orbq\#dreg\#q#sreg
-                       or q\#dreg\#b, q#sreg#b
+                  insn orbq\#dreg\#t#sreg
+                       or t\#dreg\#b, t#sreg#b
                        update_qbx_flags = 1
                   endinsn
 
                   ; word-sized operands
-                  insn orwq\#dreg\#q#sreg
-                       or q\#dreg\#w, q#sreg#w
+                  insn orwq\#dreg\#t#sreg
+                       or t\#dreg\#w, t#sreg#w
                        update_qbx_flags = 1
                   endinsn
 
@@ -454,33 +453,33 @@ _start:
         }
 
         ; bitwise not instructions
-        rept QBX_NUM_REGISTERS dreg:0 {
+        rept TINY_NUM_REGISTERS dreg:0 {
                   ; byte-sized operands
                   insn invbq#dreg
-                       not q#dreg#b
+                       not t#dreg#b
                        update_qbx_flags = 1
                   endinsn
 
                   ; word-sized operands
                   insn invwq#dreg
-                       not q#dreg#w
+                       not t#dreg#w
                        update_qbx_flags = 1
                   endinsn
 
         }
 
         ; bitwise xor instructions
-        rept QBX_NUM_REGISTERS sreg:0 {
-             rept QBX_NUM_REGISTERS dreg:0 \{
+        rept TINY_NUM_REGISTERS sreg:0 {
+             rept TINY_NUM_REGISTERS dreg:0 \{
                   ; byte-sized operands
-                  insn xorbq\#dreg\#q#sreg
-                       xor q\#dreg\#b, q#sreg#b
+                  insn xorbq\#dreg\#t#sreg
+                       xor t\#dreg\#b, t#sreg#b
                        update_qbx_flags = 1
                   endinsn
 
                   ; word-sized operands
-                  insn xorwq\#dreg\#q#sreg
-                       xor q\#dreg\#w, q#sreg#w
+                  insn xorwq\#dreg\#t#sreg
+                       xor t\#dreg\#w, t#sreg#w
                        update_qbx_flags = 1
                   endinsn
 
@@ -488,19 +487,19 @@ _start:
         }
 
         ; shift left instructions
-        rept QBX_NUM_REGISTERS sreg:0 {
-             rept QBX_NUM_REGISTERS dreg:0 \{
+        rept TINY_NUM_REGISTERS sreg:0 {
+             rept TINY_NUM_REGISTERS dreg:0 \{
                   ; byte-sized operands
-                  insn shlbq\#dreg\#q#sreg
-                       movzx rcx, q#sreg
-                       shl q\#dreg\#b, cl
+                  insn shlbq\#dreg\#t#sreg
+                       movzx rcx, t#sreg
+                       shl t\#dreg\#b, cl
                        update_qbx_flags = 1
                   endinsn
 
                   ; word-sized operands
-                  insn shlwq\#dreg\#q#sreg
-                       movzx rcx, q#sreg
-                       shl q\#dreg\#w, cl
+                  insn shlwq\#dreg\#t#sreg
+                       movzx rcx, t#sreg
+                       shl t\#dreg\#w, cl
                        update_qbx_flags = 1
                   endinsn
 
@@ -508,19 +507,19 @@ _start:
         }
 
         ; shift right instructions
-        rept QBX_NUM_REGISTERS sreg:0 {
-             rept QBX_NUM_REGISTERS dreg:0 \{
+        rept TINY_NUM_REGISTERS sreg:0 {
+             rept TINY_NUM_REGISTERS dreg:0 \{
                   ; byte-sized operands
-                  insn shrbq\#dreg\#q#sreg
-                       movzx rcx, q#sreg
-                       shr q\#dreg\#b, cl
+                  insn shrbq\#dreg\#t#sreg
+                       movzx rcx, t#sreg
+                       shr t\#dreg\#b, cl
                        update_qbx_flags = 1
                   endinsn
 
                   ; word-sized operands
-                  insn shrwq\#dreg\#q#sreg
-                       movzx rcx, q#sreg
-                       shr q\#dreg\#w, cl
+                  insn shrwq\#dreg\#t#sreg
+                       movzx rcx, t#sreg
+                       shr t\#dreg\#w, cl
                        update_qbx_flags = 1
                   endinsn
 
@@ -529,19 +528,19 @@ _start:
 
         ; unconditional jump to indirect address.
         insn jui
-             mov qipw, q0
+             mov tipw, t0
         endinsn
 
         ; unconditional jump to direct address.
         insn jud
-             movzx rcx, word [qbx_mem + qip]
-             mov qipw, cx
+             movzx rcx, word [tiny_mem + tip]
+             mov tipw, cx
         endinsn
 
         ; convenience macro for defining conditional jump insn impls.
         macro _define_cond_jump cc* {
               insn j#cc#i
-                   cmov#cc qipw, q0
+                   cmov#cc tipw, t0
               endinsn
 
               ; note that the impl for conditional jump to direct address
@@ -550,25 +549,25 @@ _start:
               ; condition, multiply result by 2 and add it to the insn ptr
               ; at the end.
               insn j#cc#d
-                   movzx rcx, word [qbx_mem + qip]
+                   movzx rcx, word [tiny_mem + tip]
                    setn#cc dl
-                   cmov#cc qipw, cx
+                   cmov#cc tipw, cx
                    shl     dl, 1
-                   add     qipw, dx
+                   add     tipw, dx
               endinsn
 
               ; analogous implementations for the negative case.
 
               insn jn#cc#i
-                   cmovn#cc qipw, q0
+                   cmovn#cc tipw, t0
               endinsn
 
               insn jn#cc#d
-                   movzx rcx, word [qbx_mem + qip]
+                   movzx rcx, word [tiny_mem + tip]
                    set#cc dl
-                   cmovn#cc qipw, cx
+                   cmovn#cc tipw, cx
                    shl     dl, 1
-                   add     qipw, dx
+                   add     tipw, dx
               endinsn
         }
 
@@ -584,40 +583,39 @@ _start:
 
         ; call procedure at indirect address.
         insn jcalli
-             sub qsp, 2
-             mov word [qbx_mem + qsp], qipw
-             mov qipw, q0
+             sub tsp, 2
+             mov word [tiny_mem + tsp], tipw
+             mov tipw, t0
         endinsn
 
         ; call procedure at direct address.
         insn jcalld
-             sub qsp, 2
-             mov word [qbx_mem + qsp], qipw
-             movzx rcx, word [qbx_mem + qip]
-             mov qipw, cx
+             sub tsp, 2
+             mov word [tiny_mem + tsp], tipw
+             movzx rcx, word [tiny_mem + tip]
+             mov tipw, cx
         endinsn
 
         ; return
         insn return
-             mov qipw, word [qbx_mem + qsp]
-             add qsp, 2
+             mov tipw, word [tiny_mem + tsp]
+             add tsp, 2
         endinsn
 
      insn yld
-             ; save QBX state before handling yield event.
-             pushfq   ; save flags that haven't been committed to qflags yet.
-             push q0
-             push q1
-             push q2
-             push q3
-             movzx rcx, word [qbx_mem + qip]  ; read yield code into rcx.
-             add qip, 2                       ; advance ip.
-             push qip                         ; save ip.
-             push qsp
-             push qflags
+             ; save cpu state before handling yield event.
+             pushfq   ; save flags that haven't been committed to tflags yet.
+             push t0
+             push t1
+             push t2
+             push t3
+             movzx rcx, word [tiny_mem + tip]  ; read yield code into rcx.
+             add tip, 2                       ; advance ip.
+             push tip                         ; save ip.
+             push tsp
+             push tflags
              ; find appropriate handler.
              cmp rcx, 0x01
-             je yld_screenupd
              cmp rcx, 0x02
              je yld_sleep
         yld_debugbreak:
@@ -625,56 +623,30 @@ _start:
              ; this is also triggered when no other matching handler is found.
              int3
              jmp yld_return
-        yld_screenupd:
-            ; YIELD CODE 0x01 -- screen update.
-            ; q0 has pointer to screen area in memory;
-            ; q1 has width/height of updated rect;
-            ; q2 has X/Y coords of upper left corner of updated rect.
-            add r12, qbx_mem
-            xor rax, rax
-            mov bx, r13w
-            mov ah, bl
-            shl rax, 8
-            mov al, bh
-            mov bx, q2
-            and bx, 0xff00
-            shr bx, 8
-            mov word [screen_rect.Left], bx
-            and q2, 0x00ff
-            mov word [screen_rect.Top], q2
-            call64 [WriteConsoleOutputA], [con_bbuf], r12, rax, 0, screen_rect
-            call64 [SetConsoleActiveScreenBuffer], [con_bbuf]
-            mov r10, [con_bbuf]
-            mov r11, [con_fbuf]
-            mov [con_bbuf], r11
-            mov [con_fbuf], r10
-            xor r12, r12
-            jmp yld_return
         yld_sleep:
             ; YIELD CODE 0x02 -- sleep.
-            ; q0 contains the number of milliseconds to sleep.
-            movzx rcx, q0
-            call64 [Sleep], rcx
-            jmp yld_return
+            ; t0 contains the number of milliseconds to sleep.
+            mov rax, 3 
+            syscall
         yld_return:
-             ; restore QBX state.
-             pop qflags
-             pop qsp
-             pop qip
-             pop q3
-             pop q2
-             pop q1
-             pop q0
+             ; restore register state.
+             pop tflags
+             pop tsp
+             pop tip
+             pop t3
+             pop t2
+             pop t1
+             pop t0
              popfq
         endinsn
 
-     tiny_insns define_jmp_table, qbx_jmp_table
+     tiny_insns define_jmp_table, tiny_jmp_table
 
         update_flags_advance:
-                ; commit the current set of flags to the qflags register and
+                ; commit the current set of flags to the tflags register and
                 ; proceed to the next insn.
                 lahf
-                mov qflags, rax
+                mov tflags, rax
                 jmp advance
 
 
