@@ -9,7 +9,7 @@ macro halt { dw halt }
 
 
 macro _check_reg r {
-    if ~(opsize eq b) & (r eq qspw | r eq qipw | r eq qflagsw)
+    if ~(opsize eq b) & (r eq tspw | r eq tipw | r eq tflagsw)
         error "Invalid register"
         dw halt
     end if
@@ -23,16 +23,16 @@ macro _check_opsize opsize {
 }
 
 macro _mem_insn name* {
-    macro q#name opsize*, addr*, r* \{
+    macro t#name opsize*, addr*, r* \{
         _check_opsize opsize
         _check_reg r
         local matched 
         define matched 0
         match = 0 [target], matched add \\{
-            if target eq q0
+            if target eq t0
                 dw (#name\opsize\#1\#r)
-            else if ((target eq q1) | (target eq q2) | (target eq q3))
-                err "addr for indirect memop must be q0"
+            else if ((target eq t1) | (target eq t2) | (target eq t3))
+                err "addr for indirect memop must be t0"
             dw (#name\#opsize\#d\#r)
                      dw target
                   end if
@@ -40,7 +40,7 @@ macro _mem_insn name* {
             \\}
             match =0 any, matched addr
             \\{
-                err "invalid address. must be [q0] or imm. value."
+                err "invalid address. must be [t0] or imm. value."
             \\}
       \}
 }
@@ -49,11 +49,11 @@ _mem_insn stor
 _mem_insn load
 
 macro tmove opsize*, r1*, r2* {
-    _check_opsize opsize
+    _check_opsize opsizeq0
     _check_reg r1
     _check_reg r2
 
-    if((r2 eq q0)| (r2 eq q1)| (r2 eq q2)| (r2 eq q3))
+    if((r2 eq t0)| (r2 eq t1)| (r2 eq t2)| (r2 eq t3))
         dw (mov\#opsize\#r1\#r2)
     else
         dw movi#opsize\#r1
@@ -68,7 +68,7 @@ macro tmove opsize*, r1*, r2* {
 }
 
 macro _binop_alu_insn  name {
-    macro q#name opsize*, r1*, r2* \{
+    macro t#name opsize*, r1*, r2* \{
         _check_opsize opsize
         _check_reg r1
         _check_reg r2
@@ -88,9 +88,9 @@ _binop_alu_insn smul
 
 
 macro _unop_alu_insn name {
-      macro q#name opsize*, r* \{
+      macro t#name opsize*, r* \{
             if ((name eq div)|(name eq sdiv)) & \
-               (r eq q0)
+               (r eq t0)
                err "invalid instruction"
             end if
             _check_reg (#r)
@@ -106,25 +106,25 @@ _unop_alu_insn inv
 _unop_alu_insn push
 _unop_alu_insn pop
 
-macro qsleep r* {
+macro tsleep r* {
       _check_reg r
       dw sleep#r
 }
 
-macro qj cond*, target* {
-      if (target eq q0)
+macro tqj cond*, target* {
+      if (target eq t0)
          dw j#cond#i
-      else if ((target eq q1)|(target eq q2)|(target eq q3))
-         err "indirect jump or call address must be held in q0"
+      else if ((target eq t1)|(target eq t2)|(target eq t3))
+         err "indirect jump or call address must be held in t0"
       else
          dw j#cond#d
          dw target
       end if
 }
 
-macro qret { dw return }
+macro tret { dw return } 
 
-macro qyld code {
+macro tyld code {
       dw yld
       dw code
 }
