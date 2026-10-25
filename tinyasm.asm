@@ -1,6 +1,11 @@
-
 format ELF64 executable 3
 entry _start
+
+include 'tinyasm_insn_helpers.asm'
+include 'tinyasm_insn_list.asm'
+include 'tinyasm_registers.asm'
+
+tiny_insns define_icodes, 0
 
 
 section '.data' data readable writeable
@@ -133,7 +138,7 @@ _start:
     advance:
         move di,word[qbx_mem + qip]
         add qip, 2
-        movzx r10, word [qbx_jmp_table + rdi * ]
+     movzx r10, word [qbx_jmp_table + rdi * 2]
         add r10, insn base
         move rax, flags
         sahf
@@ -598,7 +603,7 @@ _start:
              add qsp, 2
         endinsn
 
-        insn yld
+     insn yld
              ; save QBX state before handling yield event.
              pushfq   ; save flags that haven't been committed to qflags yet.
              push q0
@@ -662,6 +667,8 @@ _start:
              pop q0
              popfq
         endinsn
+
+     tiny_insns define_jmp_table, qbx_jmp_table
 
         update_flags_advance:
                 ; commit the current set of flags to the qflags register and
