@@ -11,11 +11,6 @@ tiny_insns define_icodes, 0
 section '.data' data readable writeable
     file_desc rq 1
     filename db "dump.bin", 0
- 
-
-section '.mem' data readable writeable
-    MEM_SIZE = 1024 * 16  ; 16 K
-    tiny_mem db MEM_SIZE dup ?
 
 section 'text' segment readable writeable
 
@@ -122,37 +117,36 @@ _start:
 
 
     begin_execution:
-        ; prep for execution.
-        xor t0, t0
-        xor t1, t1
-        xor t2, t2
-        xor t3, t3
-        xor tip, tip
-        xor rdi, rdi
-        mov tsp, MEM_SIZE - 1
-        if defined(BUILD_MODE_DEBUG)
-            int3         ; breakpoint for the debugger
-        end if
+          ; prep for execution.
+          xor t0, t0
+          xor t1, t1
+          xor t2, t2
+          xor t3, t3
+          xor tip, tip
+          xor rdi, rdi
+          mov tsp, MEM_SIZE - 1
+          if defined(BUILD_MODE_DEBUG)
+               int3         ; breakpoint for the debugger
+          end if
 
     advance:
-        move di,word[tiny_mem + tip]
-        add tip, 2
-     movzx r10, word [tiny_jmp_table + rdi * 2]
-        add r10, insn base
-        move rax, flags
-        sahf
-        jmp r10
+          mov di,word[tiny_mem + tip]
+          add tip, 2
+          movzx r10, word [tiny_jmp_table + rdi * 2]
+          add r10, insn_base
+          mov rax, flags
+          sahf
+          jmp r10
 
     ;Temporary endpoint: loading succeeded.
     ;CPU initialization and dispatch go here.
-    insn base:
+    insn_base:
 
     insn noop:
         nop
     end insn
 
     insn halt
-        ;
         cmp[arg_ptr], 3
         jl quit
         mov r10,[arg_ptr]
@@ -160,46 +154,46 @@ _start:
         cmp byte [rdx], 0
         jne quit
 
-    ;dump memory and register to a file
-    dump:
-        ;Open / Create file (sys_open = 2)
-        mov rax, 2          ; syscall: open
-        mov rdi, filename   ; file name
-        mov rsi, 577        ; O_WRONLY | O_CREAT | O_TRUNC (1 | 64 | 512)
-        mov rdx, 0644       ; file permissions
-        syscall
-        mov [file_desc], rax
+          ;dump memory and register to a file
+          dump:
+               ;Open / Create file (sys_open = 2)
+               mov rax, 2          ; syscall: open
+               mov rdi, filename   ; file name
+               mov rsi, 577        ; O_WRONLY | O_CREAT | O_TRUNC (1 | 64 | 512)
+               mov rdx, 0644       ; file permissions
+               syscall
+               mov [file_desc], rax
 
-        ;Write data to file (sys_write = 1)
-        mov rax, 1          ; syscall: write
-        mov rdi, [file_desc]; file descriptor
-        mov rsi, tiny_mem        ; buffer address
-        mov rdx, MEM_SIZE    ; number of bytes
-        syscall
+               ;Write data to file (sys_write = 1)
+               mov rax, 1          ; syscall: write
+               mov rdi, [file_desc]; file descriptor
+               mov rsi, tiny_mem        ; buffer address
+               mov rdx, MEM_SIZE    ; number of bytes
+               syscall
 
-        ;dump registers to file
-        mov word [tiny_mem + 0],  t0
-        mov word [tiny_mem + 2],  t1
-        mov word [tiny_mem + 4],  t2
-        mov word [tiny_mem + 6],  t3
-        mov word [tiny_mem + 8],  tip
-        mov word [tiny_mem + 10], tsp
-        mov word [tiny_mem + 12], tflags
+               ;dump registers to file
+               mov word [tiny_mem + 0],  t0
+               mov word [tiny_mem + 2],  t1
+               mov word [tiny_mem + 4],  t2
+               mov word [tiny_mem + 6],  t3
+               mov word [tiny_mem + 8],  tip
+               mov word [tiny_mem + 10], tsp
+               mov word [tiny_mem + 12], tflags
 
-        mov rax, 1          ; syscall: write
-        mov rdi, [file_desc]; file descriptor
-        mov rsi, tiny_mem        ; buffer address
-        mov rdx, MEM_SIZE    ; number of bytes
-        syscall
-;       Close file (sys_close = 3)
-        mov rax, 3          ; syscall: close
-        mov rdi, [file_desc]
-        syscall
+               mov rax, 1          ; syscall: write
+               mov rdi, [file_desc]; file descriptor
+               mov rsi, tiny_mem        ; buffer address
+               mov rdx, MEM_SIZE    ; number of bytes
+               syscall
+          ;       Close file (sys_close = 3)
+               mov rax, 3          ; syscall: close
+               mov rdi, [file_desc]
+               syscall
 
-    quit:
-        mov eax, 60         ; syscall: exit
-        xor edi, edi        ; status: 0
-        syscall
+          quit:
+               mov eax, 60         ; syscall: exit
+               xor edi, edi        ; status: 0
+               syscall
     end insn
 
     //TODO
@@ -257,7 +251,7 @@ _start:
             move byte [tiny_mem + t0], t#regb
         end insn
     }
-
+     ; push word-sized value onto the stack.
     rept TINY_NUM_REGISTERS reg:0 {
         insn pushwq#reg
             sub tsp, 2
@@ -290,13 +284,13 @@ _start:
                   ; byte-sized operands
                   insn addbq\#dreg\#t#sreg
                        add t\#dreg\#b, t#sreg#b
-                       update_qbx_flags = 1
+                       update_flags = 1
                   endinsn
 
                   ; word-sized operands
                   insn addwq\#dreg\#t#sreg
                        add t\#dreg\#w, t#sreg#w
-                       update_qbx_flags = 1
+                       update_flags = 1
                   endinsn
 
              \}
@@ -308,13 +302,13 @@ _start:
                   ; byte-sized operands
                   insn subbq\#dreg\#t#sreg
                        sub t\#dreg\#b, t#sreg#b
-                       update_qbx_flags = 1
+                       update_flags = 1
                   endinsn
 
                   ; word-sized operands
                   insn subwq\#dreg\#t#sreg
                        sub t\#dreg\#w, t#sreg#w
-                       update_qbx_flags = 1
+                       update_flags = 1
                   endinsn
 
              \}
@@ -329,7 +323,7 @@ _start:
                        mov al, t\#dreg\#b
                        mul t#sreg#b
                        mov t\#dreg\#b, al
-                       update_qbx_flags = 1
+                       update_flags = 1
                   endinsn
 
                  ; word-sized operands
@@ -338,7 +332,7 @@ _start:
                       mov ax, t\#dreg\#w
                       mul t#sreg#w
                       mov t\#dreg\#w, ax
-                      update_qbx_flags = 1
+                      update_flags = 1
                   endinsn
              \}
         }
@@ -352,13 +346,13 @@ _start:
                        mov al, t\#dreg\#b
                        imul t#sreg#b
                        mov t\#dreg\#b, al
-                       update_qbx_flags = 1
+                       update_flags = 1
                   endinsn
 
                  ; word-sized operands
                  insn smulwq\#dreg\#t#sreg
                       imul t\#dreg\#w, t#sreg#w
-                      update_qbx_flags = 1
+                      update_flags = 1
                   endinsn
              \}
         }
@@ -374,7 +368,7 @@ _start:
                   div cx
                   mov t0, ax
                   mov t1, dx
-                  update_qbx_flags = 1
+                  update_flags = 1
              endinsn
 
              ; word-sized operands
@@ -385,7 +379,7 @@ _start:
                   div t#sreg#w
                   mov t0, ax
                   mov t1, dx
-                  update_qbx_flags = 1
+                  update_flags = 1
              endinsn
         }
 
@@ -400,7 +394,7 @@ _start:
                   idiv cx
                   mov t0, ax
                   mov t1, dx
-                  update_qbx_flags = 1
+                  update_flags = 1
              endinsn
 
              ; word-sized operands
@@ -411,7 +405,7 @@ _start:
                   idiv t#sreg#w
                   mov t0, ax
                   mov t1, dx
-                  update_qbx_flags = 1
+                  update_flags = 1
              endinsn
         }
 
@@ -422,13 +416,13 @@ _start:
                   ; byte-sized operands
                   insn andbq\#dreg\#t#sreg
                        and t\#dreg\#b, t#sreg#b
-                       update_qbx_flags = 1
+                       update_flags = 1
                   endinsn
 
                   ; word-sized operands
                   insn andwq\#dreg\#t#sreg
                        and t\#dreg\#w, t#sreg#w
-                       update_qbx_flags = 1
+                       update_flags = 1
                   endinsn
 
              \}
@@ -440,13 +434,13 @@ _start:
                   ; byte-sized operands
                   insn orbq\#dreg\#t#sreg
                        or t\#dreg\#b, t#sreg#b
-                       update_qbx_flags = 1
+                       update_flags = 1
                   endinsn
 
                   ; word-sized operands
                   insn orwq\#dreg\#t#sreg
                        or t\#dreg\#w, t#sreg#w
-                       update_qbx_flags = 1
+                       update_flags = 1
                   endinsn
 
              \}
@@ -457,13 +451,13 @@ _start:
                   ; byte-sized operands
                   insn invbq#dreg
                        not t#dreg#b
-                       update_qbx_flags = 1
+                       update_flags = 1
                   endinsn
 
                   ; word-sized operands
                   insn invwq#dreg
                        not t#dreg#w
-                       update_qbx_flags = 1
+                       update_flags = 1
                   endinsn
 
         }
@@ -474,13 +468,13 @@ _start:
                   ; byte-sized operands
                   insn xorbq\#dreg\#t#sreg
                        xor t\#dreg\#b, t#sreg#b
-                       update_qbx_flags = 1
+                       update_flags = 1
                   endinsn
 
                   ; word-sized operands
                   insn xorwq\#dreg\#t#sreg
                        xor t\#dreg\#w, t#sreg#w
-                       update_qbx_flags = 1
+                       update_flags = 1
                   endinsn
 
              \}
@@ -493,14 +487,14 @@ _start:
                   insn shlbq\#dreg\#t#sreg
                        movzx rcx, t#sreg
                        shl t\#dreg\#b, cl
-                       update_qbx_flags = 1
+                       update_flags = 1
                   endinsn
 
                   ; word-sized operands
                   insn shlwq\#dreg\#t#sreg
                        movzx rcx, t#sreg
                        shl t\#dreg\#w, cl
-                       update_qbx_flags = 1
+                       update_flags = 1
                   endinsn
 
              \}
@@ -513,14 +507,14 @@ _start:
                   insn shrbq\#dreg\#t#sreg
                        movzx rcx, t#sreg
                        shr t\#dreg\#b, cl
-                       update_qbx_flags = 1
+                       update_flags = 1
                   endinsn
 
                   ; word-sized operands
                   insn shrwq\#dreg\#t#sreg
                        movzx rcx, t#sreg
                        shr t\#dreg\#w, cl
-                       update_qbx_flags = 1
+                       update_flags = 1
                   endinsn
 
              \}
@@ -626,7 +620,7 @@ _start:
         yld_sleep:
             ; YIELD CODE 0x02 -- sleep.
             ; t0 contains the number of milliseconds to sleep.
-            mov rax, 3 
+            mov rax, 162
             syscall
         yld_return:
              ; restore register state.

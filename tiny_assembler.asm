@@ -9,16 +9,14 @@ macro halt { dw halt }
 
 
 macro _check_reg r {
-    if ~(opsize eq b) & (r eq tspw | r eq tipw | r eq tflagsw)
-        error "Invalid register"
-        dw halt
+    if ~((r eq t0)|(r eq t1)|(r eq t2)|(r eq t3))
+        err "Invalid register"
     end if
 }
 
 macro _check_opsize opsize {
-    if ~(opsize eq b) & (opsize eq w | opsize eq d)
-        error "Invalid opsize: " 
-        dw halt
+    if ~(opsize eq b) & ~(opsize eq w)
+        err "Invalid opsize: " 
     end if
 }
 
@@ -49,7 +47,7 @@ _mem_insn stor
 _mem_insn load
 
 macro tmove opsize*, r1*, r2* {
-    _check_opsize opsizeq0
+    _check_opsize opsize
     _check_reg r1
     _check_reg r2
 
@@ -122,7 +120,7 @@ macro tqj cond*, target* {
       end if
 }
 
-macro tret { dw return } 
+macro tret { dw return }
 
 macro tyld code {
       dw yld
@@ -130,3 +128,4 @@ macro tyld code {
 }
 
 format binary
+include 'test_program.inc'
